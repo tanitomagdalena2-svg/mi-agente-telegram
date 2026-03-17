@@ -8,9 +8,8 @@ RUN npm install
 COPY . .
 RUN npm run build
 
-# Cambia a un puerto diferente
-ENV PORT=8000
-EXPOSE 8000
+# Usar el puerto estándar de Hugging Face
+ENV PORT=7860
+EXPOSE 7860
 
-# Modifica también en el código (necesitarás cambiar src/index.ts)
 CMD ["node", "dist/index.js"]
