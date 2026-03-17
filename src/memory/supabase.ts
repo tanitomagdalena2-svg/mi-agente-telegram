@@ -6,10 +6,9 @@ const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
 
 if (!supabaseUrl || !supabaseKey) {
   console.error('❌ Faltan variables de Supabase en el entorno');
-  // No lanzamos error para que el bot funcione sin memoria
 }
 
-export const supabase = supabaseUrl && supabaseKey 
+export const supabase = supabaseUrl && supabaseKey
   ? createClient(supabaseUrl, supabaseKey)
   : null;
 
@@ -17,14 +16,15 @@ export interface Memory {
   id?: string;
   user_id: string;
   session_id: string;
-  role: 'user' | 'assistant' | 'system';
+  role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
   created_at?: string;
   metadata?: Record<string, any>;
+  tool_calls?: any;
+  tool_call_id?: string;
 }
 
 export class MemoryStore {
-  // Guardar un mensaje en Supabase
   async save(memory: Omit<Memory, 'id' | 'created_at'>) {
     if (!supabase) {
       console.log('💾 [MEMORIA LOCAL]', memory);
@@ -39,7 +39,9 @@ export class MemoryStore {
           session_id: memory.session_id,
           role: memory.role,
           content: memory.content,
-          metadata: memory.metadata || {}
+          metadata: memory.metadata || {},
+          tool_calls: memory.tool_calls || null,
+          tool_call_id: memory.tool_call_id || null
         }])
         .select()
         .single();
@@ -52,7 +54,6 @@ export class MemoryStore {
     }
   }
 
-  // Obtener historial reciente de un usuario
   async getUserHistory(userId: string, limit: number = 50) {
     if (!supabase) return [];
 
@@ -72,7 +73,6 @@ export class MemoryStore {
     }
   }
 
-  // Obtener historial de una sesión específica
   async getSessionHistory(sessionId: string) {
     if (!supabase) return [];
 
@@ -91,14 +91,13 @@ export class MemoryStore {
     }
   }
 
-  // Limpiar historial antiguo (opcional)
   async cleanupOldEntries(days: number = 30) {
     if (!supabase) return;
 
     try {
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - days);
-      
+
       await supabase
         .from('agent_memory')
         .delete()
@@ -109,5 +108,4 @@ export class MemoryStore {
   }
 }
 
-// Instancia global para usar en toda la app
 export const memoryStore = new MemoryStore();
