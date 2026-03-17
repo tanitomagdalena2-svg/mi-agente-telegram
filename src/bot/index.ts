@@ -1,7 +1,7 @@
 import { Bot, Context, session, SessionFlavor, webhookCallback } from 'grammy';
 import { callGroq } from '../llm/groq';
 
-// Definir la estructura de la sesión
+// Definir la estructura de la sesión de forma explícita
 interface SessionData {
   sessionId: string;
   messageCount: number;
@@ -30,12 +30,12 @@ bot.use(async (ctx, next) => {
   await next();
 });
 
-// Middleware de sesión - usando el patrón correcto de grammy
+// Middleware de sesión - con tipo explícito en el valor inicial
 bot.use(session({
   initial: (): SessionData => ({
     sessionId: `session_${Date.now()}_${Math.random().toString(36).substring(7)}`,
     messageCount: 0,
-    conversationHistory: []
+    conversationHistory: [] // Ahora TypeScript sabe que es Array<{...}>
   })
 }));
 
@@ -44,6 +44,7 @@ bot.on('message', async (ctx) => {
   const message = ctx.message.text;
   if (!message) return;
 
+  // Ahora ctx.session está correctamente tipado
   ctx.session.messageCount++;
   
   // Mostrar que está pensando
@@ -59,13 +60,38 @@ bot.on('message', async (ctx) => {
     // Agregar respuesta al historial
     ctx.session.conversationHistory.push({ role: 'assistant', content: groqResponse });
 
-    // Limitar historial a últimos 20 mensajes (para no saturar)
+    // Limitar historial a últimos 20 mensajes
     if (ctx.session.conversationHistory.length > 20) {
       ctx.session.conversationHistory = ctx.session.conversationHistory.slice(-20);
     }
 
     // Responder
     await ctx.reply(groqResponse);
+
+    console.log(`✅ Mensaje #${ctx.session.messageCount} procesado con Groq`);
+
+  } catch (error) {
+    console.error('Error procesando mensaje:', error);
+    await ctx.reply('❌ Lo siento, tuve un error interno. Intenta de nuevo.');
+  }
+});
+
+// Manejador de errores
+bot.catch((err) => {
+  console.error('❌ Error en bot:', err);
+});
+
+// Exportar handler para webhook
+export const webhookHandler = webhookCallback(bot, 'std/http', {
+  timeoutMilliseconds: 30000,
+  onTimeout: 'return'
+});
+
+// Función de inicio
+export async function startBot() {
+  console.log('🚀 Bot con IA (Groq) iniciado');
+  console.log('📊 Usuarios permitidos:', allowedUserIds);
+}    await ctx.reply(groqResponse);
 
     console.log(`✅ Mensaje #${ctx.session.messageCount} procesado con Groq`);
 
