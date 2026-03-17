@@ -1,3 +1,4 @@
+import './debug.js'; 
 import { startBot } from './bot/index.js';
 import dotenv from 'dotenv';
 
