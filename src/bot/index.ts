@@ -66,8 +66,8 @@ bot.catch((err) => {
 
 // --- Exportar el manejador para webhook ---
 export const webhookHandler = webhookCallback(bot, 'std/http', {
-  timeoutMilliseconds: 30000, // 30 segundos de timeout
-  onTimeout: 'return' // Devolver error 504 en timeout
+  timeoutMilliseconds: 30000,
+  onTimeout: 'return'
 });
 
 // --- FUNCIÓN SIMPLIFICADA: No intenta conectar con Telegram ---
@@ -93,7 +93,4 @@ export async function startBot() {
   console.log(`   https://api.telegram.org/bot${token}/getWebhookInfo`);
   console.log('');
   console.log('✅ Bot listo para recibir mensajes cuando el webhook esté configurado');
-  
-  // NO intentamos configurar webhook automáticamente
-  // Solo mostramos las instrucciones
 }
