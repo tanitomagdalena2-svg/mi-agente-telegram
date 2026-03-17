@@ -1,15 +1,15 @@
-import { Bot, Context, session } from 'grammy';
+import { Bot, Context, session, SessionFlavor, webhookCallback } from 'grammy';
 import { callGroq } from '../llm/groq';
 
+// Definir la estructura de la sesión
 interface SessionData {
   sessionId: string;
   messageCount: number;
   conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>;
 }
 
-type MyContext = Context & {
-  session: SessionData;
-};
+// Crear el tipo de contexto combinado
+type MyContext = Context & SessionFlavor<SessionData>;
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 if (!token) throw new Error('❌ TELEGRAM_BOT_TOKEN no está definido');
@@ -30,9 +30,9 @@ bot.use(async (ctx, next) => {
   await next();
 });
 
-// Middleware de sesión con historial
+// Middleware de sesión - usando el patrón correcto de grammy
 bot.use(session({
-  initial: () => ({
+  initial: (): SessionData => ({
     sessionId: `session_${Date.now()}_${Math.random().toString(36).substring(7)}`,
     messageCount: 0,
     conversationHistory: []
@@ -59,12 +59,11 @@ bot.on('message', async (ctx) => {
     // Agregar respuesta al historial
     ctx.session.conversationHistory.push({ role: 'assistant', content: groqResponse });
 
-    // Limitar historial a últimos 10 mensajes (para no saturar)
+    // Limitar historial a últimos 20 mensajes (para no saturar)
     if (ctx.session.conversationHistory.length > 20) {
       ctx.session.conversationHistory = ctx.session.conversationHistory.slice(-20);
     }
 
-    
     // Responder
     await ctx.reply(groqResponse);
 
@@ -82,7 +81,6 @@ bot.catch((err) => {
 });
 
 // Exportar handler para webhook
-import { webhookCallback } from 'grammy';
 export const webhookHandler = webhookCallback(bot, 'std/http', {
   timeoutMilliseconds: 30000,
   onTimeout: 'return'
