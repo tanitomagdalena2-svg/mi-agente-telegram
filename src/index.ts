@@ -69,10 +69,10 @@ app.post('/webhook', async (req: any, res: Response) => {
     
     // Reconstruir headers originales útiles (especialmente para Telegram)
     if (req.headers['x-telegram-bot-api-secret-token']) {
-      headers.set('x-telegram-bot-api-secret-token', req.headers['x-telegram-bot-api-secret-token']);
+      headers.set('x-telegram-bot-api-secret-token', req.headers['x-telegram-bot-api-secret-token'] as string);
     }
     if (req.headers['x-forwarded-for']) {
-      headers.set('x-forwarded-for', req.headers['x-forwarded-for']);
+      headers.set('x-forwarded-for', req.headers['x-forwarded-for'] as string);
     }
 
     // Crear Request para grammy
@@ -141,5 +141,4 @@ process.on('SIGTERM', () => {
 process.on('SIGINT', () => {
   console.log('👋 Cerrando servidor...');
   process.exit(0);
-});  process.exit(0);
 });
