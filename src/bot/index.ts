@@ -17,7 +17,6 @@ export const bot = new Bot<MyContext>(token);
 
 const allowedUserIds = process.env.TELEGRAM_ALLOWED_USER_IDS?.split(',').map(id => parseInt(id.trim())) || [];
 
-// Middleware de autenticación y carga de historial
 bot.use(async (ctx, next) => {
   const userId = ctx.from?.id?.toString();
   if (!userId || !allowedUserIds.includes(parseInt(userId))) {
@@ -25,13 +24,11 @@ bot.use(async (ctx, next) => {
     await ctx.reply('⛔ No autorizado');
     return;
   }
-  
-  // Guardar userId en sesión
+
   ctx.session.userId = userId;
   await next();
 });
 
-// Middleware de sesión
 bot.use(session({
   initial: (): SessionData => ({
     sessionId: `session_${Date.now()}_${Math.random().toString(36).substring(7)}`,
@@ -48,7 +45,6 @@ bot.on('message', async (ctx) => {
   await ctx.api.sendChatAction(ctx.chat.id, 'typing');
 
   try {
-    // Guardar mensaje del usuario en Supabase
     await memoryStore.save({
       user_id: ctx.session.userId,
       session_id: ctx.session.sessionId,
@@ -56,21 +52,17 @@ bot.on('message', async (ctx) => {
       content: message
     });
 
-    // Obtener historial reciente del usuario (últimos 20 mensajes)
     const history = await memoryStore.getUserHistory(ctx.session.userId, 20);
-    
-    // Convertir historial al formato que espera Groq
+
     const groqMessages = history
       .sort((a, b) => new Date(a.created_at!).getTime() - new Date(b.created_at!).getTime())
       .map(m => ({
-        role: m.role,
+        role: m.role === 'tool' ? 'assistant' : m.role,
         content: m.content
       }));
 
-    // Llamar a Groq con el historial completo
     const groqResponse = await callGroq(groqMessages);
 
-    // Guardar respuesta en Supabase
     await memoryStore.save({
       user_id: ctx.session.userId,
       session_id: ctx.session.sessionId,
@@ -79,7 +71,7 @@ bot.on('message', async (ctx) => {
     });
 
     await ctx.reply(groqResponse);
-    console.log(`✅ Mensaje #${ctx.session.messageCount} procesado con Groq y memoria`);
+    console.log(`✅ Mensaje #${ctx.session.messageCount} procesado con Groq y Supabase`);
 
   } catch (error) {
     console.error('Error procesando mensaje:', error);
@@ -99,8 +91,7 @@ export const webhookHandler = webhookCallback(bot, 'std/http', {
 export async function startBot() {
   console.log('🚀 Bot con IA (Groq) y memoria Supabase iniciado');
   console.log('📊 Usuarios permitidos:', allowedUserIds);
-  
-  // Limpiar registros antiguos una vez al día (opcional)
+
   setInterval(() => {
     memoryStore.cleanupOldEntries(30);
   }, 24 * 60 * 60 * 1000);
