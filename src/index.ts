@@ -18,9 +18,8 @@ for (const varName of requiredVars) {
 
 // Agregar SPACE_ID a las variables requeridas para webhook
 if (!process.env.SPACE_ID) {
-  console.warn('⚠️ SPACE_ID no definido, usando Dinoch-Agente.hf.space');
-  process.env.SPACE_ID = 'Dinoch-Agente.hf.space';
-}
+  const spaceId = process.env.MY_SPACE_ID || 'Dinoch-Agente.hf.space';
+console.log(`🌐 Space ID configurado: ${spaceId}`);
 
 // Iniciar configuración del bot
 startBot().catch(error => {
