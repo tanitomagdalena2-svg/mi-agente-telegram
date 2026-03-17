@@ -94,7 +94,7 @@ const server = createServer(async (req, res) => {
 });
 
 // Puerto que usa Hugging Face (siempre 7860)
-const PORT = 7860;
+const PORT = process.env.PORT ? parseInt(process.env.PORT) : 8000;
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`🌐 Servidor webhook escuchando en puerto ${PORT}`);
