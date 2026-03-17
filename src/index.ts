@@ -4,6 +4,11 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+// Extender el tipo Request de Express para incluir rawBody
+interface RequestWithRawBody extends Request {
+  rawBody?: string;
+}
+
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 7860;
 const spaceId = process.env.MY_SPACE_ID || 'Dinoch-Agente.hf.space';
@@ -14,14 +19,14 @@ console.log(`📅 ${new Date().toISOString()}`);
 // Middleware para capturar raw body ANTES de que express.json lo procese
 app.use(express.json({
   verify: (req: any, res, buf) => {
-    req.rawBody = buf.toString('utf8');
+    (req as RequestWithRawBody).rawBody = buf.toString('utf8');
   }
 }));
 
 app.use(express.urlencoded({ extended: true }));
 
 // Middleware de logging para todas las peticiones
-app.use((req, res, next) => {
+app.use((req: RequestWithRawBody, res, next) => {
   console.log('\n' + '='.repeat(60));
   console.log(`📡 ${req.method} ${req.path} desde ${req.ip}`);
   console.log(`🕐 ${new Date().toISOString()}`);
@@ -54,8 +59,8 @@ app.get('/health', (req, res) => {
   res.json({ status: 'healthy', timestamp: new Date().toISOString() });
 });
 
-// Endpoint del webhook de Telegram - VERSIÓN CORREGIDA
-app.post('/webhook', async (req: any, res: Response) => {
+// Endpoint del webhook de Telegram
+app.post('/webhook', async (req: RequestWithRawBody, res: Response) => {
   console.log('🔄 Procesando webhook de Telegram...');
   
   try {
@@ -67,7 +72,7 @@ app.post('/webhook', async (req: any, res: Response) => {
     headers.set('content-type', 'application/json');
     headers.set('content-length', Buffer.byteLength(rawBody).toString());
     
-    // Reconstruir headers originales útiles (especialmente para Telegram)
+    // Reconstruir headers originales útiles
     if (req.headers['x-telegram-bot-api-secret-token']) {
       headers.set('x-telegram-bot-api-secret-token', req.headers['x-telegram-bot-api-secret-token'] as string);
     }
