@@ -25,6 +25,7 @@ export interface Memory {
 }
 
 export class MemoryStore {
+  // Guardar un mensaje en Supabase
   async save(memory: Omit<Memory, 'id' | 'created_at'>) {
     if (!supabase) {
       console.log('💾 [MEMORIA LOCAL]', memory);
@@ -49,11 +50,12 @@ export class MemoryStore {
       if (error) throw error;
       return data;
     } catch (error) {
-      console.error('Error guardando en Supabase:', error);
+      console.error('❌ Error guardando en Supabase:', error);
       return null;
     }
   }
 
+  // Obtener historial reciente de un usuario
   async getUserHistory(userId: string, limit: number = 50) {
     if (!supabase) return [];
 
@@ -68,11 +70,12 @@ export class MemoryStore {
       if (error) throw error;
       return data || [];
     } catch (error) {
-      console.error('Error leyendo de Supabase:', error);
+      console.error('❌ Error leyendo historial de Supabase:', error);
       return [];
     }
   }
 
+  // Obtener historial de una sesión específica
   async getSessionHistory(sessionId: string) {
     if (!supabase) return [];
 
@@ -86,11 +89,12 @@ export class MemoryStore {
       if (error) throw error;
       return data || [];
     } catch (error) {
-      console.error('Error leyendo sesión de Supabase:', error);
+      console.error('❌ Error leyendo sesión de Supabase:', error);
       return [];
     }
   }
 
+  // Limpiar registros antiguos (opcional)
   async cleanupOldEntries(days: number = 30) {
     if (!supabase) return;
 
@@ -102,8 +106,10 @@ export class MemoryStore {
         .from('agent_memory')
         .delete()
         .lt('created_at', cutoffDate.toISOString());
+
+      console.log(`🧹 Limpiados registros anteriores a ${cutoffDate.toISOString()}`);
     } catch (error) {
-      console.error('Error limpiando Supabase:', error);
+      console.error('❌ Error limpiando Supabase:', error);
     }
   }
 }
