@@ -1,5 +1,5 @@
 import { Bot, Context, session } from 'grammy';
-import { callGroq } from '../llm/groq.js';
+import { callGroq } from '../llm/groq';
 
 interface SessionData {
   sessionId: string;
@@ -64,6 +64,7 @@ bot.on('message', async (ctx) => {
       ctx.session.conversationHistory = ctx.session.conversationHistory.slice(-20);
     }
 
+    
     // Responder
     await ctx.reply(groqResponse);
 
