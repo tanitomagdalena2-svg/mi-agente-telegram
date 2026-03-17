@@ -10,8 +10,8 @@ interface RequestWithRawBody extends Request {
 }
 
 const app = express();
-const PORT = process.env.PORT ? parseInt(process.env.PORT) : 7860;
-const spaceId = process.env.MY_SPACE_ID || 'Dinoch-Agente.hf.space';
+const PORT = process.env.PORT ? parseInt(process.env.PORT) : 10000;
+const spaceId = process.env.MY_SPACE_ID || 'mi-agente-telegram.onrender.com';
 
 console.log('🚀 Iniciando Agente IA con Express...');
 console.log(`📅 ${new Date().toISOString()}`);
@@ -59,7 +59,7 @@ app.get('/health', (req, res) => {
   res.json({ status: 'healthy', timestamp: new Date().toISOString() });
 });
 
-// Endpoint del webhook de Telegram
+// Endpoint del webhook de Telegram - AHORA USA EL HANDLER DE GRAMMY
 app.post('/webhook', async (req: RequestWithRawBody, res: Response) => {
   console.log('🔄 Procesando webhook de Telegram...');
   
@@ -87,7 +87,7 @@ app.post('/webhook', async (req: RequestWithRawBody, res: Response) => {
       body: rawBody
     });
 
-    // Pasar al handler de grammy
+    // PASAR AL HANDLER DE GRAMMY - ¡Esta es la línea clave!
     const response = await webhookHandler(request);
     
     // Enviar respuesta
