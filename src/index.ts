@@ -1,6 +1,5 @@
 import express, { Request, Response } from 'express';
-import { startBot } from './bot/index.js';
-import { handleWebhook } from './webhook.js';
+import { startBot, webhookHandler } from './bot/index.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -12,8 +11,13 @@ const spaceId = process.env.MY_SPACE_ID || 'Dinoch-Agente.hf.space';
 console.log('🚀 Iniciando Agente IA con Express...');
 console.log(`📅 ${new Date().toISOString()}`);
 
-// Middleware para parsear JSON (crucial para Telegram)
-app.use(express.json());
+// Middleware para capturar raw body ANTES de que express.json lo procese
+app.use(express.json({
+  verify: (req: any, res, buf) => {
+    req.rawBody = buf.toString('utf8');
+  }
+}));
+
 app.use(express.urlencoded({ extended: true }));
 
 // Middleware de logging para todas las peticiones
@@ -23,7 +27,10 @@ app.use((req, res, next) => {
   console.log(`🕐 ${new Date().toISOString()}`);
   console.log(`📋 Headers:`, req.headers);
   if (req.body && Object.keys(req.body).length > 0) {
-    console.log(`📦 Body:`, JSON.stringify(req.body, null, 2));
+    console.log(`📦 Body parseado:`, JSON.stringify(req.body, null, 2));
+  }
+  if (req.rawBody) {
+    console.log(`📦 Raw body (primeros 200 chars): ${req.rawBody.substring(0, 200)}`);
   }
   next();
 });
@@ -47,30 +54,38 @@ app.get('/health', (req, res) => {
   res.json({ status: 'healthy', timestamp: new Date().toISOString() });
 });
 
-// Endpoint del webhook de Telegram
-app.post('/webhook', async (req: Request, res: Response) => {
+// Endpoint del webhook de Telegram - VERSIÓN CORREGIDA
+app.post('/webhook', async (req: any, res: Response) => {
   console.log('🔄 Procesando webhook de Telegram...');
   
   try {
-    // Verificar que el body existe
-    if (!req.body) {
-      console.error('❌ Body vacío recibido');
-      return res.status(400).json({ error: 'Empty body' });
+    // Usar raw body si está disponible, si no, serializar el body parseado
+    const rawBody = req.rawBody || JSON.stringify(req.body);
+    
+    // Crear headers básicos
+    const headers = new Headers();
+    headers.set('content-type', 'application/json');
+    headers.set('content-length', Buffer.byteLength(rawBody).toString());
+    
+    // Reconstruir headers originales útiles (especialmente para Telegram)
+    if (req.headers['x-telegram-bot-api-secret-token']) {
+      headers.set('x-telegram-bot-api-secret-token', req.headers['x-telegram-bot-api-secret-token']);
+    }
+    if (req.headers['x-forwarded-for']) {
+      headers.set('x-forwarded-for', req.headers['x-forwarded-for']);
     }
 
-    // Construir un objeto Request similar al que espera grammy
-    // Nota: grammy puede funcionar directamente con el req de Express
-    // pero por simplicidad, creamos uno similar al estándar Fetch API
+    // Crear Request para grammy
     const request = new Request(`https://${spaceId}/webhook`, {
       method: 'POST',
-      headers: req.headers as HeadersInit,
-      body: JSON.stringify(req.body)
+      headers: headers,
+      body: rawBody
     });
 
     // Pasar al handler de grammy
-    const response = await handleWebhook(request);
+    const response = await webhookHandler(request);
     
-    // Enviar la respuesta de vuelta a Telegram
+    // Enviar respuesta
     res.status(response.status);
     response.headers.forEach((value, key) => {
       res.setHeader(key, value);
@@ -80,12 +95,16 @@ app.post('/webhook', async (req: Request, res: Response) => {
     res.send(responseText);
     
     console.log(`✅ Webhook procesado, status: ${response.status}`);
+    if (response.status !== 200) {
+      console.log(`⚠️ Respuesta: ${responseText.substring(0, 200)}`);
+    }
     
   } catch (error) {
     console.error('❌ Error en webhook:', error);
     res.status(500).json({ 
       error: 'Internal Server Error',
-      message: error instanceof Error ? error.message : 'Unknown error'
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined
     });
   }
 });
@@ -117,4 +136,10 @@ startBot().catch(console.error);
 process.on('SIGTERM', () => {
   console.log('👋 Cerrando servidor...');
   process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  console.log('👋 Cerrando servidor...');
+  process.exit(0);
+});  process.exit(0);
 });
