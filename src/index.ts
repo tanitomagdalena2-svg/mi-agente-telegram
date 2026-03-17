@@ -23,10 +23,13 @@ console.log(`🌐 Space ID configurado: ${spaceId}`);
 // Guardar en process.env para que otros módulos puedan usarlo
 process.env.MY_SPACE_ID = spaceId;
 
-// Iniciar configuración del bot
+// Iniciar configuración del bot (solo muestra instrucciones, no intenta conectar)
 startBot().catch(error => {
   console.error('💥 Error fatal en startBot:', error);
 });
+
+// PUERTO - MODIFICADO PARA USAR VARIABLE DE ENTORNO
+const PORT = process.env.PORT ? parseInt(process.env.PORT) : 7860;
 
 // Crear servidor HTTP para recibir webhooks
 const server = createServer(async (req, res) => {
@@ -93,9 +96,7 @@ const server = createServer(async (req, res) => {
   }
 });
 
-// Puerto que usa Hugging Face (siempre 7860)
-const PORT = process.env.PORT ? parseInt(process.env.PORT) : 8000;
-
+// Escuchar en el puerto configurado
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`🌐 Servidor webhook escuchando en puerto ${PORT}`);
   console.log(`🔗 URL del webhook: https://${spaceId}/webhook`);
