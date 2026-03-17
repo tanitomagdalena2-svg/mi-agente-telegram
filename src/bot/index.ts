@@ -1,6 +1,5 @@
-import { Bot, Context, session } from 'grammy';
+import { Bot, Context, session, webhookCallback } from 'grammy';
 import { MemoryStore } from '../memory/supabase.js';
-import { HttpsProxyAgent } from 'https-proxy-agent';
 
 // Tipos para la sesión
 interface SessionData {
@@ -12,35 +11,11 @@ type MyContext = Context & {
   session: SessionData;
 };
 
-// --- Configuración del Proxy ---
-// Necesitas un proxy real. Aquí usamos variables de entorno por seguridad.
-const proxyUrl = process.env.HTTP_PROXY || process.env.HTTPS_PROXY;
-let proxyAgent = undefined;
-if (proxyUrl) {
-  try {
-    proxyAgent = new HttpsProxyAgent(proxyUrl);
-    console.log(`🔌 Proxy configurado: ${proxyUrl}`);
-  } catch (error) {
-    console.error('❌ Error al configurar el proxy:', error.message);
-  }
-} else {
-  console.warn('⚠️  No se encontró variable de proxy (HTTP_PROXY/HTTPS_PROXY). Conectando directamente.');
-}
-// ---------------------------------
-
 // Inicializar bot con token desde secrets
 const token = process.env.TELEGRAM_BOT_TOKEN;
 if (!token) throw new Error('❌ TELEGRAM_BOT_TOKEN no está definido');
 
-// Configurar el cliente del bot con el agente proxy (si existe)
-export const bot = new Bot<MyContext>(token, {
-  client: {
-    baseFetchConfig: {
-      agent: proxyAgent,         // <-- Aquí se usa el proxy
-      compress: true,
-    },
-  },
-});
+export const bot = new Bot<MyContext>(token);
 
 // Lista de usuarios permitidos (desde secrets)
 const allowedUserIds = process.env.TELEGRAM_ALLOWED_USER_IDS?.split(',').map(id => parseInt(id.trim())) || [];
@@ -79,31 +54,83 @@ bot.on('message', async (ctx) => {
 
   console.log(`📩 Mensaje de ${ctx.from?.id}: ${message}`);
   console.log(`🆔 Session ID: ${ctx.session.sessionId}`);
+  console.log(`📊 Mensaje #${ctx.session.messageCount} en esta sesión`);
 
   await ctx.reply(`✅ Bot funcionando. Mensaje #${ctx.session.messageCount} recibido: "${message}"`);
 });
 
-// --- Función para iniciar el bot ---
-export async function startBot() {
+// --- Manejador de errores básico ---
+bot.catch((err) => {
+  console.error('❌ Error en el bot:', err);
+});
+
+// --- NO USAR bot.start() ---
+// En su lugar, exportamos el manejador para webhook
+export const webhookHandler = webhookCallback(bot, 'std/http', {
+  timeoutMilliseconds: 30000, // 30 segundos de timeout
+  onTimeout: 'return' // Devolver error 504 en timeout
+});
+
+// Función para configurar el webhook (se llama una vez al iniciar)
+export async function setupWebhook() {
   try {
-    await bot.start({
-      onStart: (botInfo) => {
-        console.log(`✅ Bot @${botInfo.username} iniciado correctamente`);
-        console.log(`📊 Usuarios permitidos: ${allowedUserIds.join(', ')}`);
-        if (proxyAgent) {
-          console.log(`🔒 Conectando a través de proxy.`);
-        } else {
-          console.log(`🌐 Conectando directamente (sin proxy).`);
-        }
-      },
-      // Configuración adicional para long polling
-      timeout: 30, // segundos
-      drop_pending_updates: true,
+    // La URL del webhook es la URL de tu Space + /webhook
+    const spaceId = process.env.SPACE_ID || 'Dinoch-Agente.hf.space';
+    const webhookUrl = `https://${spaceId}/webhook`;
+    
+    console.log(`🔧 Configurando webhook en: ${webhookUrl}`);
+    
+    // Eliminar webhook anterior y configurar el nuevo
+    await bot.api.deleteWebhook();
+    await bot.api.setWebhook(webhookUrl, {
       allowed_updates: ['message'],
+      drop_pending_updates: true,
+      max_connections: 10,
+      secret_token: undefined // Opcional: podrías agregar un token secreto por seguridad
     });
+    
+    console.log('✅ Webhook configurado correctamente');
+    
+    // Verificar la configuración
+    const webhookInfo = await bot.api.getWebhookInfo();
+    console.log('📡 Información del webhook:', {
+      url: webhookInfo.url,
+      has_custom_certificate: webhookInfo.has_custom_certificate,
+      pending_update_count: webhookInfo.pending_update_count,
+      last_error_date: webhookInfo.last_error_date 
+        ? new Date(webhookInfo.last_error_date * 1000).toISOString() 
+        : null,
+      last_error_message: webhookInfo.last_error_message
+    });
+    
+    return true;
   } catch (error) {
-    console.error('💥 Error al iniciar el bot:', error);
-    // No terminamos el proceso, solo registramos el error.
-    // El setInterval de index.ts mantendrá vivo el proceso.
+    console.error('❌ Error configurando webhook:', error);
+    return false;
   }
+}
+
+// Función de inicio (se llama desde index.ts)
+export async function startBot() {
+  console.log('🚀 Iniciando configuración del bot...');
+  
+  // Verificar credenciales
+  if (!token) {
+    console.error('❌ TELEGRAM_BOT_TOKEN no está definido');
+    return;
+  }
+  
+  console.log('📊 Usuarios permitidos:', allowedUserIds);
+  
+  // Configurar webhook
+  const webhookOk = await setupWebhook();
+  
+  if (webhookOk) {
+    console.log('✅ Bot listo para recibir mensajes vía webhook');
+  } else {
+    console.error('❌ No se pudo configurar el webhook');
+  }
+  
+  // Nota: NO iniciamos long polling, solo configuramos webhook
+  // Las peticiones llegarán a través del endpoint /webhook
 }
