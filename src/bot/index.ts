@@ -1,5 +1,5 @@
 import { Bot, Context, session, SessionFlavor, webhookCallback } from 'grammy';
-import { callGroq } from '../llm/groq';
+import { callGroq } from '../llm/groq.js';
 
 interface SessionData {
   sessionId: string;
