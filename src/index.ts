@@ -113,11 +113,14 @@ const server = createServer(async (req, res) => {
       console.log('🔄 Procesando webhook de Telegram...');
       
       try {
+        // CORRECCIÓN: Convertir Buffer a string o usar directamente con toString()
+        const bodyString = body.length > 0 ? body.toString('utf8') : undefined;
+        
         // Crear Request object para el webhook handler
         const request = new Request(fullUrl, {
           method: req.method,
           headers: req.headers as HeadersInit,
-          body: body.length ? body : undefined
+          body: bodyString // Ahora es string, compatible con BodyInit
         });
 
         // Procesar con el handler de webhook
@@ -189,9 +192,6 @@ const server = createServer(async (req, res) => {
     });
   }
 });
-
-// --- Endpoint de salud adicional (opcional) ---
-// Podrías agregar un manejador específico para /health si lo deseas
 
 // --- Iniciar servidor ---
 server.listen(PORT, '0.0.0.0', () => {
