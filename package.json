@@ -11,6 +11,7 @@
     "groq-sdk": "^0.3.2",
     "@supabase/supabase-js": "^2.39.0",
     "dotenv": "^16.3.1"
+    "https-proxy-agent": "^7.0.4"
   },
   "devDependencies": {
     "typescript": "^5.3.3",
