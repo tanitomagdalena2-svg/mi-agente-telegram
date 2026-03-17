@@ -16,7 +16,6 @@ export const bot = new Bot<MyContext>(token);
 
 const allowedUserIds = process.env.TELEGRAM_ALLOWED_USER_IDS?.split(',').map(id => parseInt(id.trim())) || [];
 
-// Middleware de autenticación
 bot.use(async (ctx, next) => {
   const userId = ctx.from?.id;
   if (!userId || !allowedUserIds.includes(userId)) {
@@ -27,7 +26,6 @@ bot.use(async (ctx, next) => {
   await next();
 });
 
-// Middleware de sesión
 bot.use(session({
   initial: (): SessionData => ({
     sessionId: `session_${Date.now()}_${Math.random().toString(36).substring(7)}`,
@@ -36,20 +34,16 @@ bot.use(session({
   })
 }));
 
-// Manejador de mensajes con IA
 bot.on('message', async (ctx) => {
   const message = ctx.message.text;
   if (!message) return;
 
   ctx.session.messageCount++;
-  
   await ctx.api.sendChatAction(ctx.chat.id, 'typing');
 
   try {
     ctx.session.conversationHistory.push({ role: 'user', content: message });
-
     const groqResponse = await callGroq(ctx.session.conversationHistory);
-
     ctx.session.conversationHistory.push({ role: 'assistant', content: groqResponse });
 
     if (ctx.session.conversationHistory.length > 20) {
@@ -57,7 +51,6 @@ bot.on('message', async (ctx) => {
     }
 
     await ctx.reply(groqResponse);
-
     console.log(`✅ Mensaje #${ctx.session.messageCount} procesado con Groq`);
   } catch (error) {
     console.error('Error procesando mensaje:', error);
@@ -69,64 +62,11 @@ bot.catch((err) => {
   console.error('❌ Error en bot:', err);
 });
 
-// Exportar handler para webhook
 export const webhookHandler = webhookCallback(bot, 'std/http', {
   timeoutMilliseconds: 30000,
   onTimeout: 'return'
 });
 
-// Función de inicio
-export async function startBot() {
-  console.log('🚀 Bot con IA (Groq) iniciado');
-  console.log('📊 Usuarios permitidos:', allowedUserIds);
-                                              }    // Responder
-    await ctx.reply(groqResponse);
-
-    console.log(`✅ Mensaje #${ctx.session.messageCount} procesado con Groq`);
-
-  } catch (error) {
-    console.error('Error procesando mensaje:', error);
-    await ctx.reply('❌ Lo siento, tuve un error interno. Intenta de nuevo.');
-  }
-});
-
-// Manejador de errores
-bot.catch((err) => {
-  console.error('❌ Error en bot:', err);
-});
-
-// Exportar handler para webhook
-export const webhookHandler = webhookCallback(bot, 'std/http', {
-  timeoutMilliseconds: 30000,
-  onTimeout: 'return'
-});
-
-// Función de inicio
-export async function startBot() {
-  console.log('🚀 Bot con IA (Groq) iniciado');
-  console.log('📊 Usuarios permitidos:', allowedUserIds);
-}    await ctx.reply(groqResponse);
-
-    console.log(`✅ Mensaje #${ctx.session.messageCount} procesado con Groq`);
-
-  } catch (error) {
-    console.error('Error procesando mensaje:', error);
-    await ctx.reply('❌ Lo siento, tuve un error interno. Intenta de nuevo.');
-  }
-});
-
-// Manejador de errores
-bot.catch((err) => {
-  console.error('❌ Error en bot:', err);
-});
-
-// Exportar handler para webhook
-export const webhookHandler = webhookCallback(bot, 'std/http', {
-  timeoutMilliseconds: 30000,
-  onTimeout: 'return'
-});
-
-// Función de inicio
 export async function startBot() {
   console.log('🚀 Bot con IA (Groq) iniciado');
   console.log('📊 Usuarios permitidos:', allowedUserIds);
