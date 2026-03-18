@@ -20,7 +20,6 @@ export const bot = new Bot<MyContext>(token);
 const allowedUserIds = process.env.TELEGRAM_ALLOWED_USER_IDS?.split(',').map(id => parseInt(id.trim())) || [];
 
 // ===== 1. PRIMERO: Middleware de sesión =====
-// Esto DEBE ir antes que cualquier middleware que use ctx.session
 bot.use(session({
   initial: (): SessionData => ({
     sessionId: `session_${Date.now()}_${Math.random().toString(36).substring(7)}`,
@@ -30,7 +29,6 @@ bot.use(session({
 }));
 
 // ===== 2. SEGUNDO: Middleware de autenticación =====
-// Ahora ctx.session YA EXISTE cuando lo usamos
 bot.use(async (ctx, next) => {
   const userId = ctx.from?.id?.toString();
   if (!userId || !allowedUserIds.includes(parseInt(userId))) {
@@ -39,7 +37,6 @@ bot.use(async (ctx, next) => {
     return;
   }
 
-  // Guardar userId en sesión (ahora funciona)
   ctx.session.userId = userId;
   await next();
 });
@@ -53,7 +50,6 @@ bot.on('message:text', async (ctx) => {
   await ctx.api.sendChatAction(ctx.chat.id, 'typing');
 
   try {
-    // Guardar mensaje del usuario
     await memoryStore.save({
       user_id: ctx.session.userId,
       session_id: ctx.session.sessionId,
@@ -61,16 +57,13 @@ bot.on('message:text', async (ctx) => {
       content: message
     });
 
-    // Obtener historial
     const history = await memoryStore.getUserHistory(ctx.session.userId, 20);
     const groqMessages = history
       .sort((a, b) => new Date(a.created_at!).getTime() - new Date(b.created_at!).getTime())
       .map(m => ({ role: m.role === 'tool' ? 'assistant' : m.role, content: m.content }));
 
-    // Llamar a Groq
     const groqResponse = await callGroq(groqMessages);
 
-    // Guardar respuesta
     await memoryStore.save({
       user_id: ctx.session.userId,
       session_id: ctx.session.sessionId,
@@ -78,40 +71,49 @@ bot.on('message:text', async (ctx) => {
       content: groqResponse
     });
 
-    // Responder
     await ctx.reply(groqResponse);
     console.log(`✅ Mensaje de texto #${ctx.session.messageCount} procesado con Groq`);
 
   } catch (error) {
-    console.error('Error procesando mensaje de texto:', error);
+    console.error('❌ Error procesando mensaje de texto:', error);
     await ctx.reply('❌ Lo siento, tuve un error interno. Intenta de nuevo.');
   }
 });
 
-// ===== 4. Manejador para mensajes de VOZ =====
+// ===== 4. Manejador para mensajes de VOZ (CON LOGS DETALLADOS) =====
 bot.on('message:voice', async (ctx) => {
+  console.log('\n' + '='.repeat(60));
+  console.log('🎤 INICIANDO PROCESAMIENTO DE MENSAJE DE VOZ');
+  console.log('='.repeat(60));
+  
   ctx.session.messageCount++;
+  console.log(`📊 Mensaje #${ctx.session.messageCount}`);
+
   await ctx.api.sendChatAction(ctx.chat.id, 'typing');
 
   try {
-    // 1. Obtener file_id del mensaje de voz
+    // PASO 1: Obtener file_id
+    console.log('\n🔍 [PASO 1] Obteniendo file_id...');
     const fileId = telegramAudio.getFileId(ctx);
     if (!fileId) {
+      console.error('❌ No se pudo obtener file_id');
       await ctx.reply('❌ No pude identificar el archivo de audio.');
       return;
     }
+    console.log(`✅ File ID obtenido: ${fileId}`);
 
-    console.log(`🎵 Procesando mensaje de voz #${ctx.session.messageCount}`);
-
-    // 2. Descargar audio usando telegramAudio
+    // PASO 2: Descargar audio
+    console.log('\n📥 [PASO 2] Descargando audio de Telegram...');
     const audioBuffer = await telegramAudio.downloadVoiceFile(fileId);
     console.log(`✅ Audio descargado: ${audioBuffer.length} bytes`);
 
-    // 3. Transcribir audio usando ElevenLabs
+    // PASO 3: Transcribir audio
+    console.log('\n🎯 [PASO 3] Transcribiendo audio con ElevenLabs...');
     const transcribedText = await elevenLabs.transcribeFromBuffer(audioBuffer);
     console.log('📝 Texto transcrito:', transcribedText);
 
-    // 4. Guardar transcripción en memoria
+    // PASO 4: Guardar transcripción
+    console.log('\n💾 [PASO 4] Guardando transcripción en memoria...');
     await memoryStore.save({
       user_id: ctx.session.userId,
       session_id: ctx.session.sessionId,
@@ -119,15 +121,18 @@ bot.on('message:voice', async (ctx) => {
       content: `[AUDIO] ${transcribedText}`
     });
 
-    // 5. Obtener historial y respuesta de Groq
+    // PASO 5: Obtener respuesta de Groq
+    console.log('\n🧠 [PASO 5] Consultando a Groq...');
     const history = await memoryStore.getUserHistory(ctx.session.userId, 20);
     const groqMessages = history
       .sort((a, b) => new Date(a.created_at!).getTime() - new Date(b.created_at!).getTime())
       .map(m => ({ role: m.role === 'tool' ? 'assistant' : m.role, content: m.content }));
 
     const groqResponse = await callGroq(groqMessages);
+    console.log('💬 Respuesta de Groq:', groqResponse);
 
-    // 6. Guardar respuesta en memoria
+    // PASO 6: Guardar respuesta
+    console.log('\n💾 [PASO 6] Guardando respuesta en memoria...');
     await memoryStore.save({
       user_id: ctx.session.userId,
       session_id: ctx.session.sessionId,
@@ -135,39 +140,53 @@ bot.on('message:voice', async (ctx) => {
       content: groqResponse
     });
 
-    // 7. Generar audio con ElevenLabs
-    console.log('🔊 Generando audio de respuesta...');
+    // PASO 7: Generar audio
+    console.log('\n🔊 [PASO 7] Generando audio con ElevenLabs...');
     const audioResponse = await elevenLabs.synthesizeSpeech(groqResponse);
+    console.log(`✅ Audio generado: ${audioResponse.length} bytes`);
 
-    // 8. Enviar audio (CORREGIDO: usando InputFile)
+    // PASO 8: Enviar audio
+    console.log('\n📤 [PASO 8] Enviando audio a Telegram...');
     await ctx.replyWithVoice(new InputFile(audioResponse));
     
-    console.log(`✅ Mensaje de voz #${ctx.session.messageCount} procesado completamente`);
+    console.log('\n' + '='.repeat(60));
+    console.log(`✅ MENSAJE DE VOZ #${ctx.session.messageCount} COMPLETADO EXITOSAMENTE`);
+    console.log('='.repeat(60) + '\n');
 
   } catch (error) {
-    console.error('❌ Error procesando mensaje de voz:', error);
+    console.error('\n❌ ERROR EN PROCESAMIENTO DE VOZ:');
+    console.error('   - Tipo:', error instanceof Error ? error.constructor.name : typeof error);
+    console.error('   - Mensaje:', error instanceof Error ? error.message : String(error));
+    if (error instanceof Error && error.stack) {
+      console.error('   - Stack:', error.stack.split('\n')[0]);
+    }
     await ctx.reply('❌ Lo siento, tuve un error procesando el mensaje de voz. Intenta con texto.');
   }
 });
 
 // ===== Manejador de errores global =====
 bot.catch((err) => {
-  console.error('❌ Error en bot:', err);
+  console.error('\n❌ ERROR GLOBAL EN BOT:');
+  console.error(err);
 });
 
 // ===== Exportar handler para webhook =====
 export const webhookHandler = webhookCallback(bot, 'std/http', {
-  timeoutMilliseconds: 60000, // Aumentado para audio
+  timeoutMilliseconds: 60000,
   onTimeout: 'return'
 });
 
 // ===== Función de inicio =====
 export async function startBot() {
-  console.log('🚀 Bot con IA (Groq), voz y memoria iniciado');
+  console.log('\n' + '='.repeat(60));
+  console.log('🚀 BOT INICIADO - CONFIGURACIÓN:');
+  console.log('='.repeat(60));
   console.log('📊 Usuarios permitidos:', allowedUserIds);
-  console.log('🎤 Soporte para mensajes de voz activado');
+  console.log('🎤 Soporte para mensajes de voz: ACTIVADO');
+  console.log('🔊 ElevenLabs: CONFIGURADO');
+  console.log('💾 Memoria Supabase: ACTIVADA');
+  console.log('='.repeat(60) + '\n');
   
-  // Limpiar registros antiguos una vez al día
   setInterval(() => {
     memoryStore.cleanupOldEntries(30);
   }, 24 * 60 * 60 * 1000);
