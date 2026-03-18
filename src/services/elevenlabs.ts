@@ -16,17 +16,46 @@ export class ElevenLabsService {
     this.apiKey = ELEVENLABS_API_KEY || '';
   }
 
-  /**
-   * Obtiene la voz por defecto
-   */
   async getDefaultVoice(): Promise<string> {
     return this.defaultVoiceId;
   }
 
   /**
+   * Transcribe audio desde Buffer (recibido de Telegram)
+   */
+  async transcribeFromBuffer(audioBuffer: Buffer): Promise<string> {
+    try {
+      console.log(`🎤 Transcribiendo audio: ${audioBuffer.length} bytes`);
+      return await this.transcribeAudio(audioBuffer);
+    } catch (error) {
+      console.error('❌ Error transcribiendo audio:', error);
+      return "[Error al transcribir el audio]";
+    }
+  }
+
+  /**
+   * Transcribe audio desde URL (compatibilidad)
+   */
+  async transcribeFromUrl(audioUrl: string): Promise<string> {
+    try {
+      console.log('📥 Descargando audio desde:', audioUrl);
+      const response = await axios.get(audioUrl, { 
+        responseType: 'arraybuffer',
+        timeout: 30000,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; TelegramBot/1.0)'
+        }
+      });
+      const audioBuffer = Buffer.from(response.data);
+      return await this.transcribeFromBuffer(audioBuffer);
+    } catch (error) {
+      console.error('❌ Error descargando/transcribiendo audio:', error);
+      return "[Error al procesar el audio]";
+    }
+  }
+
+  /**
    * Transcribe audio a texto usando ElevenLabs STT
-   * @param audioBuffer Buffer del archivo de audio
-   * @returns Texto transcrito
    */
   async transcribeAudio(audioBuffer: Buffer): Promise<string> {
     try {
@@ -60,40 +89,7 @@ export class ElevenLabsService {
   }
 
   /**
-   * Transcribe audio desde una URL (útil para Telegram)
-   * @param audioUrl URL pública del archivo de audio
-   * @returns Texto transcrito
-   */
-  async transcribeFromUrl(audioUrl: string): Promise<string> {
-    try {
-      console.log('📥 Descargando audio desde:', audioUrl);
-      
-      // Descargar el audio
-      const response = await axios.get(audioUrl, { 
-        responseType: 'arraybuffer',
-        timeout: 30000,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; TelegramBot/1.0)'
-        }
-      });
-      
-      const audioBuffer = Buffer.from(response.data);
-      console.log(`✅ Audio descargado: ${audioBuffer.length} bytes`);
-      
-      // Usar el método de transcripción
-      return await this.transcribeAudio(audioBuffer);
-    } catch (error) {
-      console.error('❌ Error descargando/transcribiendo audio:', error);
-      return "[Error al procesar el audio]";
-    }
-  }
-
-  /**
    * Sintetiza voz a partir de texto
-   * @param text Texto a convertir en voz
-   * @param voiceId ID de la voz (opcional)
-   * @param options Configuración de voz (estabilidad, similitud, estilo)
-   * @returns Buffer con el audio MP3
    */
   async synthesizeSpeech(
     text: string,
@@ -128,7 +124,7 @@ export class ElevenLabsService {
             'Accept': 'audio/mpeg'
           },
           responseType: 'arraybuffer',
-          timeout: 60000 // 60 segundos para audios largos
+          timeout: 60000
         }
       );
 
@@ -146,7 +142,6 @@ export class ElevenLabsService {
 
   /**
    * Obtiene lista de voces disponibles
-   * @returns Array de voces
    */
   async getVoices(): Promise<any[]> {
     try {
@@ -163,7 +158,6 @@ export class ElevenLabsService {
 
   /**
    * Cambia la voz por defecto
-   * @param voiceId Nuevo ID de voz
    */
   setDefaultVoice(voiceId: string): void {
     this.defaultVoiceId = voiceId;
@@ -172,7 +166,6 @@ export class ElevenLabsService {
 
   /**
    * Verifica si la API key es válida
-   * @returns true si es válida
    */
   async testConnection(): Promise<boolean> {
     try {
@@ -184,10 +177,9 @@ export class ElevenLabsService {
   }
 }
 
-// Exportar instancia única para toda la app
 export const elevenLabs = new ElevenLabsService();
 
-// Prueba de conexión al iniciar (opcional)
+// Prueba de conexión al iniciar
 if (process.env.NODE_ENV !== 'production') {
   elevenLabs.testConnection().then(ok => {
     if (ok) {
