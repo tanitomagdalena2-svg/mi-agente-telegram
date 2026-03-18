@@ -3,6 +3,12 @@ import { callGroq } from '../llm/groq.js';
 import { memoryStore } from '../memory/supabase.js';
 import { telegramAudio } from '../services/telegramAudio.js';
 import { elevenLabs } from '../services/elevenlabs.js';
+import Groq from 'groq-sdk'; // ← NUEVA IMPORTACIÓN
+
+// Inicializar Groq para transcripción
+const groqClient = new Groq({
+  apiKey: process.env.GROQ_API_KEY || ''
+});
 
 interface SessionData {
   sessionId: string;
@@ -39,6 +45,32 @@ bot.use(async (ctx, next) => {
   ctx.session.userId = userId;
   await next();
 });
+
+// Función para transcribir audio con Groq Whisper
+async function transcribeWithGroq(audioBuffer: Buffer): Promise<string> {
+  try {
+    console.log('🎤 Transcribiendo con Groq Whisper...');
+    
+    // Crear un File object a partir del buffer
+    const file = new File([audioBuffer], 'audio.ogg', { type: 'audio/ogg' });
+
+    const transcription = await groqClient.audio.transcriptions.create({
+      file: file,
+      model: 'whisper-large-v3',
+      language: 'es',
+      response_format: 'text'
+    });
+
+    console.log('✅ Transcripción exitosa:', transcription);
+    return transcription;
+  } catch (error) {
+    console.error('❌ Error en transcripción con Groq:');
+    if (error instanceof Error) {
+      console.error('   - Mensaje:', error.message);
+    }
+    throw error;
+  }
+}
 
 // ===== 3. Manejador para mensajes de TEXTO =====
 bot.on('message:text', async (ctx) => {
@@ -82,10 +114,10 @@ bot.on('message:text', async (ctx) => {
   }
 });
 
-// ===== 4. Manejador para mensajes de VOZ (CON FALLBACK A TEXTO) =====
+// ===== 4. Manejador para mensajes de VOZ (AHORA CON GROQ) =====
 bot.on('message:voice', async (ctx) => {
   console.log('\n' + '='.repeat(60));
-  console.log('🎤 INICIANDO PROCESAMIENTO DE AUDIO');
+  console.log('🎤 INICIANDO PROCESAMIENTO DE AUDIO CON GROQ');
   console.log('='.repeat(60));
   
   ctx.session.messageCount++;
@@ -104,10 +136,10 @@ bot.on('message:voice', async (ctx) => {
     const audioBuffer = await telegramAudio.downloadVoiceFile(fileId);
     console.log(`✅ Audio descargado: ${audioBuffer.length} bytes`);
 
-    // --- PASO 2: Transcribir audio (intento principal) ---
+    // --- PASO 2: Transcribir audio con GROQ (ya no ElevenLabs) ---
     try {
-      console.log(`🎯 Transcribiendo con ElevenLabs...`);
-      transcribedText = await elevenLabs.transcribeFromBuffer(audioBuffer);
+      console.log(`🎯 Transcribiendo con Groq Whisper...`);
+      transcribedText = await transcribeWithGroq(audioBuffer);
       console.log(`📝 Transcripción exitosa: "${transcribedText}"`);
     } catch (sttError) {
       console.error(`❌ Error en transcripción:`, sttError);
@@ -115,15 +147,15 @@ bot.on('message:voice', async (ctx) => {
       usingFallback = true;
     }
 
-    // --- PASO 3: Guardar transcripción en memoria (siempre en texto) ---
+    // --- PASO 3: Guardar transcripción en memoria ---
     await memoryStore.save({
       user_id: ctx.session.userId,
       session_id: ctx.session.sessionId,
       role: 'user',
-      content: `[AUDIO: ${transcribedText}]`
+      content: `[AUDIO] ${transcribedText}`
     });
 
-    // --- PASO 4: Obtener respuesta de Groq ---
+    // --- PASO 4: Obtener respuesta de Groq (para el contenido) ---
     const history = await memoryStore.getUserHistory(ctx.session.userId, 20);
     const groqMessages = history
       .sort((a, b) => new Date(a.created_at!).getTime() - new Date(b.created_at!).getTime())
@@ -142,7 +174,7 @@ bot.on('message:voice', async (ctx) => {
 
     // --- PASO 5: Intentar responder con audio (fallback a texto) ---
     try {
-      console.log(`🔊 Generando audio de respuesta...`);
+      console.log(`🔊 Generando audio de respuesta con ElevenLabs...`);
       const audioResponse = await elevenLabs.synthesizeSpeech(groqResponse);
       await ctx.replyWithVoice(new InputFile(audioResponse));
       console.log(`✅ Respuesta enviada en audio`);
@@ -151,7 +183,7 @@ bot.on('message:voice', async (ctx) => {
       
       // Fallback: responder con texto + aviso
       const fallbackMessage = usingFallback 
-        ? `⚠️ *Nota:* Tu audio no pudo ser transcrito, pero respondo a tu consulta:\n\n${groqResponse}`
+        ? `⚠️ *Nota:* Tu audio fue transcrito, pero no pude generar audio de respuesta:\n\n${groqResponse}`
         : `⚠️ *Nota:* No pude generar audio, pero aquí va mi respuesta:\n\n${groqResponse}`;
       
       await ctx.reply(fallbackMessage, { parse_mode: 'Markdown' });
@@ -163,7 +195,7 @@ bot.on('message:voice', async (ctx) => {
   } catch (error) {
     console.error(`❌ Error crítico en audio:`, error);
     
-    // Error general: responder con texto amigable
+    // Error general
     await ctx.reply(
       `❌ *Error procesando el audio*\n\n` +
       `Hubo un problema al procesar tu mensaje de voz. ` +
@@ -185,9 +217,9 @@ export const webhookHandler = webhookCallback(bot, 'std/http', {
 
 export async function startBot() {
   console.log('\n' + '='.repeat(60));
-  console.log('🚀 BOT INICIADO - MODO AUDIO CON FALLBACK');
+  console.log('🚀 BOT INICIADO - TRANSCRIPCIÓN CON GROQ WHISPER');
   console.log('='.repeat(60));
   console.log('📊 Usuarios permitidos:', allowedUserIds);
-  console.log('🎤 Audio → Texto → IA → Audio (con fallback a texto)');
+  console.log('🎤 Audio → Groq Whisper → IA → Audio (fallback a texto)');
   console.log('='.repeat(60) + '\n');
 }
