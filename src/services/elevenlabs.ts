@@ -19,10 +19,10 @@ export class ElevenLabsService {
     this.client = new ElevenLabsClient({ apiKey: this.apiKey });
     
     // Log para verificar que la API key se cargó
-    console.log('🔑 ElevenLAS API Key configurada (primeros 5 chars):', this.apiKey.substring(0, 5) + '...');
+    console.log('🔑 ElevenLabs API Key configurada (primeros 5 chars):', this.apiKey.substring(0, 5) + '...');
     
-    // Verificar la voz por defecto al iniciar
-    this.testVoice(this.defaultVoiceId);
+    // Verificar la voz por defecto al iniciar (no bloqueante)
+    this.testVoice(this.defaultVoiceId).catch(() => {});
   }
 
   /**
@@ -36,7 +36,18 @@ export class ElevenLabsService {
       console.log(`✅ Voz "${response.data.name}" (${voiceId}) está disponible`);
       return true;
     } catch (error) {
-      console.error(`❌ Voz ${voiceId} NO disponible:`, error.response?.data || error.message);
+      // TypeScript: manejo seguro de error desconocido
+      let errorMessage = 'Error desconocido';
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+      console.error(`❌ Voz ${voiceId} NO disponible:`, errorMessage);
+      
+      // Verificar si es error de Axios para más detalles
+      if (axios.isAxiosError(error) && error.response) {
+        console.error('   - Status:', error.response.status);
+        console.error('   - Detalles:', error.response.data);
+      }
       return false;
     }
   }
@@ -56,7 +67,12 @@ export class ElevenLabsService {
       console.log(`🎤 Transcribiendo audio: ${audioBuffer.length} bytes`);
       return await this.transcribeAudio(audioBuffer);
     } catch (error) {
-      console.error('❌ Error transcribiendo audio:', error);
+      // TypeScript: manejo seguro de error desconocido
+      let errorMessage = 'Error desconocido';
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+      console.error('❌ Error transcribiendo audio:', errorMessage);
       return "[Error al transcribir el audio]";
     }
   }
@@ -87,10 +103,17 @@ export class ElevenLabsService {
       return response.data?.text || "[Silencio]";
     } catch (error) {
       console.error('❌ Error en ElevenLabs STT:');
+      
+      // TypeScript: manejo seguro de error desconocido
       if (axios.isAxiosError(error) && error.response) {
         console.error('   - Status:', error.response.status);
         console.error('   - Detalles:', error.response.data);
+      } else if (error instanceof Error) {
+        console.error('   - Mensaje:', error.message);
+      } else {
+        console.error('   - Error desconocido');
       }
+      
       return "[No se pudo transcribir el audio]";
     }
   }
@@ -141,9 +164,14 @@ export class ElevenLabsService {
       
     } catch (error) {
       console.error('❌ Error en ElevenLabs TTS:');
+      
+      // TypeScript: manejo seguro de error desconocido
       if (error instanceof Error) {
         console.error('   - Mensaje:', error.message);
+      } else {
+        console.error('   - Mensaje: Error desconocido');
       }
+      
       throw error;
     }
   }
@@ -163,7 +191,15 @@ export class ElevenLabsService {
       
       return response.voices || [];
     } catch (error) {
-      console.error('❌ Error obteniendo voces:', error);
+      console.error('❌ Error obteniendo voces:');
+      
+      // TypeScript: manejo seguro de error desconocido
+      if (error instanceof Error) {
+        console.error('   - Mensaje:', error.message);
+      } else {
+        console.error('   - Error desconocido');
+      }
+      
       return [];
     }
   }
@@ -174,7 +210,9 @@ export class ElevenLabsService {
   setDefaultVoice(voiceId: string): void {
     this.defaultVoiceId = voiceId;
     console.log(`🔊 Voz por defecto cambiada a: ${voiceId}`);
-    this.testVoice(voiceId); // Verificar que la nueva voz funciona
+    
+    // Verificar que la nueva voz funciona (no bloqueante)
+    this.testVoice(voiceId).catch(() => {});
   }
 
   /**
