@@ -58,8 +58,8 @@ async function transcribeWithGroq(audioBuffer: Buffer): Promise<string> {
       file: fileStream,
       model: 'whisper-large-v3',
       language: 'es',
-      response_format: 'text' // Esto asegura que la respuesta sea string
-    });
+      response_format: 'text'
+    }) as string;
 
     console.log('✅ Transcripción exitosa');
     return transcription; // transcription ya es un string
