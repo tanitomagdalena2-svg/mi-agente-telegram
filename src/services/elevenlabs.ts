@@ -1,27 +1,59 @@
-import axios from 'axios';
-import FormData from 'form-data';
+import { ElevenLabsClient } from 'elevenlabs';
+import { Readable } from 'stream';
 
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
 if (!ELEVENLABS_API_KEY) {
   console.error('❌ FALTA ELEVENLABS_API_KEY en variables de entorno');
 }
 
-const BASE_URL = 'https://api.elevenlabs.io/v1';
+// Inicializar cliente oficial
+const client = new ElevenLabsClient({
+  apiKey: ELEVENLABS_API_KEY
+});
 
 export class ElevenLabsService {
-  private apiKey: string;
-  private defaultVoiceId = 'Xb7hH8MSUJpSbSDYk0k2'; // Alice - voz con español
+  private defaultVoiceId = 'JBFqnCBsd6RMkjVDRZzb'; // Voz del ejemplo (Georgia)
 
-  constructor() {
-    this.apiKey = ELEVENLABS_API_KEY || '';
-  }
+  constructor() {}
 
   async getDefaultVoice(): Promise<string> {
     return this.defaultVoiceId;
   }
 
   /**
-   * Transcribe audio desde Buffer (recibido de Telegram)
+   * Transcribe audio a texto usando ElevenLabs STT
+   */
+  async transcribeAudio(audioBuffer: Buffer): Promise<string> {
+    try {
+      // ElevenLabs aún no tiene librería oficial para STT, mantenemos Axios
+      const FormData = (await import('form-data')).default;
+      const axios = (await import('axios')).default;
+      
+      const formData = new FormData();
+      formData.append('audio', audioBuffer, 'audio.ogg');
+      formData.append('model_id', 'scribe_v1');
+
+      const response = await axios.post(
+        'https://api.elevenlabs.io/v1/speech-to-text',
+        formData,
+        {
+          headers: {
+            ...formData.getHeaders(),
+            'xi-api-key': ELEVENLABS_API_KEY
+          },
+          timeout: 30000
+        }
+      );
+
+      return response.data?.text || "[Silencio]";
+    } catch (error) {
+      console.error('❌ Error en ElevenLabs STT:', error);
+      return "[Error al transcribir el audio]";
+    }
+  }
+
+  /**
+   * Transcribe audio desde Buffer (wrapper)
    */
   async transcribeFromBuffer(audioBuffer: Buffer): Promise<string> {
     try {
@@ -34,62 +66,7 @@ export class ElevenLabsService {
   }
 
   /**
-   * Transcribe audio desde URL (compatibilidad)
-   */
-  async transcribeFromUrl(audioUrl: string): Promise<string> {
-    try {
-      console.log('📥 Descargando audio desde:', audioUrl);
-      const response = await axios.get(audioUrl, { 
-        responseType: 'arraybuffer',
-        timeout: 30000,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; TelegramBot/1.0)'
-        }
-      });
-      const audioBuffer = Buffer.from(response.data);
-      return await this.transcribeFromBuffer(audioBuffer);
-    } catch (error) {
-      console.error('❌ Error descargando/transcribiendo audio:', error);
-      return "[Error al procesar el audio]";
-    }
-  }
-
-  /**
-   * Transcribe audio a texto usando ElevenLabs STT
-   */
-  async transcribeAudio(audioBuffer: Buffer): Promise<string> {
-    try {
-      const formData = new FormData();
-      formData.append('audio', audioBuffer, 'audio.ogg');
-      formData.append('model_id', 'scribe_v1');
-
-      const response = await axios.post(
-        `${BASE_URL}/speech-to-text`,
-        formData,
-        {
-          headers: {
-            ...formData.getHeaders(),
-            'xi-api-key': this.apiKey
-          },
-          maxBodyLength: Infinity,
-          maxContentLength: Infinity,
-          timeout: 30000
-        }
-      );
-
-      return response.data?.text || "[Silencio]";
-    } catch (error) {
-      console.error('❌ Error en ElevenLabs STT:');
-      if (axios.isAxiosError(error) && error.response) {
-        console.error('Código:', error.response.status);
-        console.error('Detalles:', error.response.data);
-      }
-      return "[No se pudo transcribir el audio]";
-    }
-  }
-
-  /**
-   * Sintetiza voz a partir de texto
+   * Sintetiza voz a partir de texto usando librería oficial
    */
   async synthesizeSpeech(
     text: string,
@@ -105,51 +82,44 @@ export class ElevenLabsService {
     try {
       console.log(`🔊 Generando voz con ElevenLabs (${finalVoiceId})...`);
       
-      const response = await axios.post(
-        `${BASE_URL}/text-to-speech/${finalVoiceId}`,
-        {
-          text: text,
-          model_id: 'eleven_multilingual_v2',
-          voice_settings: {
-            stability: options?.stability ?? 0.5,
-            similarity_boost: options?.similarityBoost ?? 0.75,
-            style: options?.style ?? 0.0,
-            use_speaker_boost: true
-          }
-        },
-        {
-          headers: {
-            'xi-api-key': this.apiKey,
-            'Content-Type': 'application/json',
-            'Accept': 'audio/mpeg'
-          },
-          responseType: 'arraybuffer',
-          timeout: 60000
+      // Usar la librería oficial para TTS
+      const audioStream = await client.textToSpeech.convert(finalVoiceId, {
+        text: text,
+        model_id: 'eleven_multilingual_v2',
+        voice_settings: {
+          stability: options?.stability ?? 0.5,
+          similarity_boost: options?.similarityBoost ?? 0.75,
+          style: options?.style ?? 0.0,
+          use_speaker_boost: true
         }
-      );
+      });
 
-      console.log(`✅ Audio generado: ${response.data.length} bytes`);
-      return Buffer.from(response.data);
+      // Convertir stream a Buffer
+      const chunks: Buffer[] = [];
+      for await (const chunk of audioStream) {
+        chunks.push(Buffer.from(chunk));
+      }
+      
+      const audioBuffer = Buffer.concat(chunks);
+      console.log(`✅ Audio generado: ${audioBuffer.length} bytes`);
+      return audioBuffer;
+      
     } catch (error) {
       console.error('❌ Error en ElevenLabs TTS:');
-      if (axios.isAxiosError(error) && error.response) {
-        console.error('Código:', error.response.status);
-        console.error('Detalles:', error.response.data);
+      if (error instanceof Error) {
+        console.error('Mensaje:', error.message);
       }
       throw error;
     }
   }
 
   /**
-   * Obtiene lista de voces disponibles
+   * Lista todas las voces disponibles
    */
   async getVoices(): Promise<any[]> {
     try {
-      const response = await axios.get(`${BASE_URL}/voices`, {
-        headers: { 'xi-api-key': this.apiKey },
-        timeout: 10000
-      });
-      return response.data.voices || [];
+      const response = await client.voices.getAll();
+      return response.voices || [];
     } catch (error) {
       console.error('❌ Error obteniendo voces:', error);
       return [];
@@ -163,29 +133,18 @@ export class ElevenLabsService {
     this.defaultVoiceId = voiceId;
     console.log(`🔊 Voz por defecto cambiada a: ${voiceId}`);
   }
-
-  /**
-   * Verifica si la API key es válida
-   */
-  async testConnection(): Promise<boolean> {
-    try {
-      const voices = await this.getVoices();
-      return voices.length > 0;
-    } catch {
-      return false;
-    }
-  }
 }
 
 export const elevenLabs = new ElevenLabsService();
 
 // Prueba de conexión al iniciar
 if (process.env.NODE_ENV !== 'production') {
-  elevenLabs.testConnection().then(ok => {
-    if (ok) {
-      console.log('✅ ElevenLabs conectado correctamente');
-    } else {
+  (async () => {
+    try {
+      const voices = await elevenLabs.getVoices();
+      console.log(`✅ ElevenLabs conectado - ${voices.length} voces disponibles`);
+    } catch {
       console.warn('⚠️ ElevenLabs no responde - verifica API key');
     }
-  });
+  })();
 }
