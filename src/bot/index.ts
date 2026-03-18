@@ -137,7 +137,7 @@ bot.on('message:voice', async (ctx) => {
     const audioResponse = await elevenLabs.synthesizeSpeech(groqResponse);
 
     // 8. Enviar audio
-    await ctx.replyWithVoice({ source: audioResponse });
+    await ctx.replyWithVoice(audioResponse);
     
     console.log(`✅ Mensaje de voz #${ctx.session.messageCount} procesado completamente`);
 
