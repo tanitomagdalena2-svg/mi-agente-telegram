@@ -46,43 +46,29 @@ bot.use(async (ctx, next) => {
   await next();
 });
 
-// Función simplificada: guarda el buffer en un archivo temporal y lo sube a Groq
 async function transcribeWithGroq(audioBuffer: Buffer): Promise<string> {
   const tempFilePath = path.join(os.tmpdir(), `audio-${Date.now()}.ogg`);
-  
+
   try {
     console.log('🎤 Transcribiendo con Groq Whisper...');
-    
-    // Guardar buffer en archivo temporal
     await fs.promises.writeFile(tempFilePath, audioBuffer);
-    console.log(`📁 Archivo temporal creado: ${tempFilePath}`);
-
-    // Crear un stream de lectura para el archivo
     const fileStream = fs.createReadStream(tempFilePath);
 
     const transcription = await groqClient.audio.transcriptions.create({
       file: fileStream,
       model: 'whisper-large-v3',
       language: 'es',
-      response_format: 'text'
+      response_format: 'text' // Esto asegura que la respuesta sea string
     });
 
     console.log('✅ Transcripción exitosa');
-    return transcription;
+    return transcription; // transcription ya es un string
   } catch (error) {
-    console.error('❌ Error en transcripción con Groq:');
-    if (error instanceof Error) {
-      console.error('   - Mensaje:', error.message);
-    }
+    console.error('❌ Error en transcripción con Groq:',
+      error instanceof Error ? error.message : error);
     throw error;
   } finally {
-    // Limpiar archivo temporal
-    try {
-      await fs.promises.unlink(tempFilePath);
-      console.log('🧹 Archivo temporal eliminado');
-    } catch (cleanupError) {
-      console.warn('⚠️ No se pudo eliminar archivo temporal:', cleanupError);
-    }
+    try { await fs.promises.unlink(tempFilePath); } catch { /* ignorar */ }
   }
 }
 
@@ -118,7 +104,6 @@ bot.on('message:text', async (ctx) => {
 
     await ctx.reply(groqResponse);
     console.log(`✅ Mensaje de texto #${ctx.session.messageCount} procesado`);
-
   } catch (error) {
     console.error('❌ Error en texto:', error);
     await ctx.reply('❌ Error interno. Intenta de nuevo.');
@@ -130,7 +115,7 @@ bot.on('message:voice', async (ctx) => {
   console.log('\n' + '='.repeat(60));
   console.log('🎤 INICIANDO PROCESAMIENTO DE AUDIO');
   console.log('='.repeat(60));
-  
+
   ctx.session.messageCount++;
   await ctx.api.sendChatAction(ctx.chat.id, 'typing');
 
@@ -139,12 +124,12 @@ bot.on('message:voice', async (ctx) => {
   try {
     const fileId = telegramAudio.getFileId(ctx);
     if (!fileId) throw new Error('No se pudo obtener file_id');
-    
+
     console.log(`📥 Descargando audio...`);
     const audioBuffer = await telegramAudio.downloadVoiceFile(fileId);
     console.log(`✅ Audio descargado: ${audioBuffer.length} bytes`);
 
-    // Transcribir con Groq usando archivo temporal
+    // Llamada a la función que retorna string
     transcribedText = await transcribeWithGroq(audioBuffer);
     console.log(`📝 Transcripción: "${transcribedText}"`);
 
@@ -177,7 +162,7 @@ bot.on('message:voice', async (ctx) => {
       console.log(`✅ Respuesta en audio`);
     } catch (ttsError) {
       console.log(`⚠️ Usando fallback a texto (error TTS)`);
-      await ctx.reply(`🎤 *Transcripción:* ${transcribedText}\n\n💬 *Respuesta:* ${groqResponse}`, 
+      await ctx.reply(`🎤 *Transcripción:* ${transcribedText}\n\n💬 *Respuesta:* ${groqResponse}`,
         { parse_mode: 'Markdown' });
     }
 
@@ -185,9 +170,8 @@ bot.on('message:voice', async (ctx) => {
 
   } catch (error) {
     console.error(`❌ Error:`, error);
-    const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
     await ctx.reply(
-      `❌ *Error procesando audio*\n\n${errorMessage}`,
+      `❌ *Error procesando audio*\n\nNo pude procesar el audio.`,
       { parse_mode: 'Markdown' }
     );
   }
@@ -204,9 +188,8 @@ export const webhookHandler = webhookCallback(bot, 'std/http', {
 
 export async function startBot() {
   console.log('\n' + '='.repeat(60));
-  console.log('🚀 BOT CON GROQ WHISPER (VERSIÓN ARCHIVOS TEMPORALES)');
+  console.log('🚀 BOT CON GROQ WHISPER (FINAL)');
   console.log('='.repeat(60));
   console.log('📊 Usuarios:', allowedUserIds);
-  console.log('🎤 Transcripción: Groq Whisper con archivos temporales');
   console.log('='.repeat(60) + '\n');
 }
