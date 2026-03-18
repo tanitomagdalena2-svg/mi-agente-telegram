@@ -19,20 +19,8 @@ export const bot = new Bot<MyContext>(token);
 
 const allowedUserIds = process.env.TELEGRAM_ALLOWED_USER_IDS?.split(',').map(id => parseInt(id.trim())) || [];
 
-// Middleware de autenticación
-bot.use(async (ctx, next) => {
-  const userId = ctx.from?.id?.toString();
-  if (!userId || !allowedUserIds.includes(parseInt(userId))) {
-    console.log(`⛔ Acceso denegado para user ID: ${userId}`);
-    await ctx.reply('⛔ No autorizado');
-    return;
-  }
-
-  ctx.session.userId = userId;
-  await next();
-});
-
-// Middleware de sesión
+// ===== 1. PRIMERO: Middleware de sesión =====
+// Esto DEBE ir antes que cualquier middleware que use ctx.session
 bot.use(session({
   initial: (): SessionData => ({
     sessionId: `session_${Date.now()}_${Math.random().toString(36).substring(7)}`,
@@ -41,7 +29,22 @@ bot.use(session({
   })
 }));
 
-// Manejador para mensajes de TEXTO
+// ===== 2. SEGUNDO: Middleware de autenticación =====
+// Ahora ctx.session YA EXISTE cuando lo usamos
+bot.use(async (ctx, next) => {
+  const userId = ctx.from?.id?.toString();
+  if (!userId || !allowedUserIds.includes(parseInt(userId))) {
+    console.log(`⛔ Acceso denegado para user ID: ${userId}`);
+    await ctx.reply('⛔ No autorizado');
+    return;
+  }
+
+  // Guardar userId en sesión (ahora funciona)
+  ctx.session.userId = userId;
+  await next();
+});
+
+// ===== 3. Manejador para mensajes de TEXTO =====
 bot.on('message:text', async (ctx) => {
   const message = ctx.message.text;
   if (!message) return;
@@ -77,15 +80,15 @@ bot.on('message:text', async (ctx) => {
 
     // Responder
     await ctx.reply(groqResponse);
-    console.log(`✅ Mensaje #${ctx.session.messageCount} procesado con Groq`);
+    console.log(`✅ Mensaje de texto #${ctx.session.messageCount} procesado con Groq`);
 
   } catch (error) {
-    console.error('Error procesando mensaje:', error);
+    console.error('Error procesando mensaje de texto:', error);
     await ctx.reply('❌ Lo siento, tuve un error interno. Intenta de nuevo.');
   }
 });
 
-// Manejador para mensajes de VOZ
+// ===== 4. Manejador para mensajes de VOZ =====
 bot.on('message:voice', async (ctx) => {
   ctx.session.messageCount++;
   await ctx.api.sendChatAction(ctx.chat.id, 'typing');
@@ -136,7 +139,7 @@ bot.on('message:voice', async (ctx) => {
     console.log('🔊 Generando audio de respuesta...');
     const audioResponse = await elevenLabs.synthesizeSpeech(groqResponse);
 
-    // 8. Enviar audio
+    // 8. Enviar audio (CORREGIDO: usando InputFile)
     await ctx.replyWithVoice(new InputFile(audioResponse));
     
     console.log(`✅ Mensaje de voz #${ctx.session.messageCount} procesado completamente`);
@@ -147,18 +150,18 @@ bot.on('message:voice', async (ctx) => {
   }
 });
 
-// Manejador de errores global
+// ===== Manejador de errores global =====
 bot.catch((err) => {
   console.error('❌ Error en bot:', err);
 });
 
-// Exportar handler para webhook
+// ===== Exportar handler para webhook =====
 export const webhookHandler = webhookCallback(bot, 'std/http', {
   timeoutMilliseconds: 60000, // Aumentado para audio
   onTimeout: 'return'
 });
 
-// Función de inicio
+// ===== Función de inicio =====
 export async function startBot() {
   console.log('🚀 Bot con IA (Groq), voz y memoria iniciado');
   console.log('📊 Usuarios permitidos:', allowedUserIds);
