@@ -12,7 +12,7 @@ const client = new ElevenLabsClient({
 });
 
 export class ElevenLabsService {
-  private defaultVoiceId = 'JBFqnCBsd6RMkjVDRZzb'; // Voz del ejemplo (Georgia)
+  private defaultVoiceId = '21m00Tcm4TlvDq8ikWAM'; // Voz del ejemplo (Georgia)
 
   constructor() {}
 
