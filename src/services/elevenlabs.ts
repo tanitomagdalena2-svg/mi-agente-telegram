@@ -11,8 +11,17 @@ const BASE_URL = 'https://api.elevenlabs.io/v1';
 export class ElevenLabsService {
   private apiKey: string;
 
+  // ID de una voz que soporta español, por ejemplo "Alice - Clear, Engaging Educator"
+  // Puedes cambiarlo por cualquier otro ID de tu lista.
+  private defaultVoiceId = 'Xb7hH8MSUJpSbSDYk0k2'; 
+
   constructor() {
     this.apiKey = ELEVENLABS_API_KEY || '';
+  }
+
+  // Método para obtener la voz por defecto
+  async getDefaultVoice(): Promise<string> {
+    return this.defaultVoiceId;
   }
 
   async transcribeAudio(audioBuffer: Buffer): Promise<string> {
@@ -53,19 +62,21 @@ export class ElevenLabsService {
 
   async synthesizeSpeech(
     text: string,
-    voiceId: string = '21m00Tcm4TlvDq8ikWAM',
+    voiceId?: string,
     options?: {
       stability?: number;
       similarityBoost?: number;
       style?: number;
     }
   ): Promise<Buffer> {
+    // Usar la voz proporcionada o la voz por defecto
+    const finalVoiceId = voiceId || this.defaultVoiceId;
     try {
       const response = await axios.post(
-        `${BASE_URL}/text-to-speech/${voiceId}`,
+        `${BASE_URL}/text-to-speech/${finalVoiceId}`,
         {
           text: text,
-          model_id: 'eleven_monolingual_v1',
+          model_id: 'eleven_multilingual_v2', // Modelo multilingüe para español
           voice_settings: {
             stability: options?.stability ?? 0.5,
             similarity_boost: options?.similarityBoost ?? 0.75,
