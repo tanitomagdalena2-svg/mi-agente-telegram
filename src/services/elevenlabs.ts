@@ -10,16 +10,12 @@ const BASE_URL = 'https://api.elevenlabs.io/v1';
 
 export class ElevenLabsService {
   private apiKey: string;
-
-  // ID de una voz que soporta español, por ejemplo "Alice - Clear, Engaging Educator"
-  // Puedes cambiarlo por cualquier otro ID de tu lista.
-  private defaultVoiceId = 'Xb7hH8MSUJpSbSDYk0k2'; 
+  private defaultVoiceId = 'Xb7hH8MSUJpSbSDYk0k2'; // Alice - voz con español
 
   constructor() {
     this.apiKey = ELEVENLABS_API_KEY || '';
   }
 
-  // Método para obtener la voz por defecto
   async getDefaultVoice(): Promise<string> {
     return this.defaultVoiceId;
   }
@@ -27,10 +23,7 @@ export class ElevenLabsService {
   async transcribeAudio(audioBuffer: Buffer): Promise<string> {
     try {
       const formData = new FormData();
-      formData.append('audio', audioBuffer, { 
-        filename: 'audio.ogg',
-        contentType: 'audio/ogg'
-      });
+      formData.append('audio', audioBuffer, 'audio.ogg');
       formData.append('model_id', 'scribe_v1');
 
       const response = await axios.post(
@@ -42,21 +35,19 @@ export class ElevenLabsService {
             'xi-api-key': this.apiKey
           },
           maxBodyLength: Infinity,
-          maxContentLength: Infinity
+          maxContentLength: Infinity,
+          timeout: 30000
         }
       );
 
-      if (response.data && response.data.text) {
-        return response.data.text;
-      } else {
-        throw new Error('No se pudo transcribir el audio');
-      }
+      return response.data?.text || "[Silencio]";
     } catch (error) {
-      console.error('❌ Error en ElevenLabs STT:', error);
+      console.error('❌ Error en ElevenLabs STT:');
       if (axios.isAxiosError(error) && error.response) {
-        console.error('Detalles del error:', error.response.data);
+        console.error('Código:', error.response.status);
+        console.error('Detalles:', error.response.data);
       }
-      throw error;
+      return "[No se pudo transcribir el audio]";
     }
   }
 
@@ -69,14 +60,13 @@ export class ElevenLabsService {
       style?: number;
     }
   ): Promise<Buffer> {
-    // Usar la voz proporcionada o la voz por defecto
     const finalVoiceId = voiceId || this.defaultVoiceId;
     try {
       const response = await axios.post(
         `${BASE_URL}/text-to-speech/${finalVoiceId}`,
         {
           text: text,
-          model_id: 'eleven_multilingual_v2', // Modelo multilingüe para español
+          model_id: 'eleven_multilingual_v2',
           voice_settings: {
             stability: options?.stability ?? 0.5,
             similarity_boost: options?.similarityBoost ?? 0.75,
