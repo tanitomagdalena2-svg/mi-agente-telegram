@@ -4,6 +4,9 @@ import { memoryStore } from '../memory/supabase.js';
 import { telegramAudio } from '../services/telegramAudio.js';
 import { elevenLabs } from '../services/elevenlabs.js';
 import Groq from 'groq-sdk';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 
 const groqClient = new Groq({
   apiKey: process.env.GROQ_API_KEY || ''
@@ -43,19 +46,22 @@ bot.use(async (ctx, next) => {
   await next();
 });
 
-// Función corregida para transcribir audio con Groq Whisper
+// Función simplificada: guarda el buffer en un archivo temporal y lo sube a Groq
 async function transcribeWithGroq(audioBuffer: Buffer): Promise<string> {
+  const tempFilePath = path.join(os.tmpdir(), `audio-${Date.now()}.ogg`);
+  
   try {
     console.log('🎤 Transcribiendo con Groq Whisper...');
     
-    // Convertir Buffer a Uint8Array (solución para el error)
-    const uint8Array = new Uint8Array(audioBuffer.buffer, audioBuffer.byteOffset, audioBuffer.byteLength);
-    
-    // Crear Blob a partir del Uint8Array
-    const blob = new Blob([uint8Array], { type: 'audio/ogg' });
+    // Guardar buffer en archivo temporal
+    await fs.promises.writeFile(tempFilePath, audioBuffer);
+    console.log(`📁 Archivo temporal creado: ${tempFilePath}`);
+
+    // Crear un stream de lectura para el archivo
+    const fileStream = fs.createReadStream(tempFilePath);
 
     const transcription = await groqClient.audio.transcriptions.create({
-      file: blob,
+      file: fileStream,
       model: 'whisper-large-v3',
       language: 'es',
       response_format: 'text'
@@ -69,6 +75,14 @@ async function transcribeWithGroq(audioBuffer: Buffer): Promise<string> {
       console.error('   - Mensaje:', error.message);
     }
     throw error;
+  } finally {
+    // Limpiar archivo temporal
+    try {
+      await fs.promises.unlink(tempFilePath);
+      console.log('🧹 Archivo temporal eliminado');
+    } catch (cleanupError) {
+      console.warn('⚠️ No se pudo eliminar archivo temporal:', cleanupError);
+    }
   }
 }
 
@@ -114,7 +128,7 @@ bot.on('message:text', async (ctx) => {
 // ===== Manejador para mensajes de VOZ =====
 bot.on('message:voice', async (ctx) => {
   console.log('\n' + '='.repeat(60));
-  console.log('🎤 INICIANDO PROCESAMIENTO DE AUDIO CON GROQ');
+  console.log('🎤 INICIANDO PROCESAMIENTO DE AUDIO');
   console.log('='.repeat(60));
   
   ctx.session.messageCount++;
@@ -130,7 +144,7 @@ bot.on('message:voice', async (ctx) => {
     const audioBuffer = await telegramAudio.downloadVoiceFile(fileId);
     console.log(`✅ Audio descargado: ${audioBuffer.length} bytes`);
 
-    // Transcribir con Groq (ya corregido)
+    // Transcribir con Groq usando archivo temporal
     transcribedText = await transcribeWithGroq(audioBuffer);
     console.log(`📝 Transcripción: "${transcribedText}"`);
 
@@ -155,7 +169,7 @@ bot.on('message:voice', async (ctx) => {
       content: groqResponse
     });
 
-    // Intentar responder con audio (fallback a texto si falla)
+    // Intentar responder con audio (fallback a texto)
     try {
       console.log(`🔊 Generando audio...`);
       const audioResponse = await elevenLabs.synthesizeSpeech(groqResponse);
@@ -171,8 +185,9 @@ bot.on('message:voice', async (ctx) => {
 
   } catch (error) {
     console.error(`❌ Error:`, error);
+    const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
     await ctx.reply(
-      `❌ *Error*\n\nNo pude procesar el audio. ${transcribedText ? 'Lo transcrito fue: ' + transcribedText : ''}`,
+      `❌ *Error procesando audio*\n\n${errorMessage}`,
       { parse_mode: 'Markdown' }
     );
   }
@@ -189,9 +204,9 @@ export const webhookHandler = webhookCallback(bot, 'std/http', {
 
 export async function startBot() {
   console.log('\n' + '='.repeat(60));
-  console.log('🚀 BOT CON GROQ WHISPER');
+  console.log('🚀 BOT CON GROQ WHISPER (VERSIÓN ARCHIVOS TEMPORALES)');
   console.log('='.repeat(60));
   console.log('📊 Usuarios:', allowedUserIds);
-  console.log('🎤 Transcripción: Groq Whisper');
+  console.log('🎤 Transcripción: Groq Whisper con archivos temporales');
   console.log('='.repeat(60) + '\n');
 }
